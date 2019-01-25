@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='libgsea',
-    version='0.1.0',
+    version='0.2.0',
     author='Antony B Holmes',
     author_email='antony.b.holmes@gmail.com',
     description='Library for working with GSEA plots.',
