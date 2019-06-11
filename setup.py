@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='libgsea',
-    version='0.3.0',
+    version='0.4.0',
     author='Antony B Holmes',
     author_email='antony.b.holmes@gmail.com',
     description='Library for GSEA including extended GSEA.',
