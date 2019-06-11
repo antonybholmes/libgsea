@@ -14,7 +14,7 @@ pip install libgsea
 
 ## Extended GSEA
 
-Extended GSEA can be run my modifying extended_gsea_example.py and
+Extended GSEA can be run by modifying **extended_gsea_example.py** and
 suppying your own input files.
 
 1. Modify **expression_matrix.txt** to your input expression matrix
