@@ -2,9 +2,9 @@ import setuptools
 
 setuptools.setup(
     name='libgsea',
-    version='0.5.0',
+    version='0.6.0',
     author='Antony B Holmes',
-    author_email='antony.b.holmes@gmail.com',
+    author_email='antony@antonybholmes.com',
     description='Library for GSEA including extended GSEA.',
     url='https://github.com/antonybholmes/libgsea',
     packages=setuptools.find_packages(),

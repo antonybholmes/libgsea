@@ -17,6 +17,9 @@ import libplot
 import matplotlib.gridspec as gridspec
 
 
+# http://arep.med.harvard.edu/N-Regulation/Tolonen2006/GSEA/index.html
+
+
 class ExtGSEA(object):
     def __init__(self, ranked_gene_list, ranked_score, permutations=1000, w=1):
         self.__w = w
@@ -141,7 +144,6 @@ class ExtGSEA(object):
             self.__ledge = self.__ledge[::-1]
         else:
             ixpk = np.where(self.__es_all == np.max(self.__es_all))[0][0]
-            print(ixpk)
             isen[0:(ixpk + 1)] = 1
             self.__ledge = self.__rkc[(isen == 1) & (self.__isgs == 1)]
             
