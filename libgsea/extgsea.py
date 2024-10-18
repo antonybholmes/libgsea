@@ -6,6 +6,8 @@ Created on Thu Dec 13 14:13:10 2018
 @author: antony
 """
 
+import math
+from typing import Optional
 import numpy as np
 import pandas as pd
 import sys
@@ -15,9 +17,13 @@ import matplotlib.pyplot as plt
 import matplotlib.transforms as transforms
 import libplot
 import matplotlib.gridspec as gridspec
-
+import svgplot
+from svgplot.axis import Axis
+from svgplot.svgfigure import SVGFigure
 
 # http://arep.med.harvard.edu/N-Regulation/Tolonen2006/GSEA/index.html
+
+LINE_GREEN = "#00b359"
 
 
 class ExtGSEA:
@@ -74,20 +80,30 @@ class ExtGSEA:
         es_all = score_hit - score_miss
         es = np.max(es_all) + np.min(es_all)
 
-        isen = np.zeros(l)
+        is_leading_edge = np.zeros(l)
 
         if es < 0:
+            # where does the leading edge start
             ixpk = np.where(es_all == np.min(es_all))[0][0]
-            isen[ixpk:] = 1
-            ledge = self._ranked_gene_list[(isen == 1) & (hits == 1)]
+            is_leading_edge[ixpk:] = 1
+            ledge = self._ranked_gene_list[(is_leading_edge == 1) & (hits == 1)]
             ledge = ledge[::-1]
         else:
             ixpk = np.where(es_all == np.max(es_all))[0][0]
             print(ixpk)
-            isen[0 : (ixpk + 1)] = 1
-            ledge = self._ranked_gene_list[(isen == 1) & (hits == 1)]
+            is_leading_edge[0 : (ixpk + 1)] = 1
+            ledge = self._ranked_gene_list[(is_leading_edge == 1) & (hits == 1)]
 
-        return es, es_all, hits, ledge
+        # just the indices of the leading edge
+        is_leading_edge = np.array(sorted(np.where(is_leading_edge == 1)[0]))
+
+        return {
+            "es": es,
+            "es_all": es_all,
+            "hits": hits,
+            "is_leading_edge": is_leading_edge,
+            "ledge": ledge,
+        }
 
     def ext_gsea(self, gs1, gs2, name1="Gene set 1", name2="Gene set 2"):
         self._gs1 = gs1
@@ -154,7 +170,7 @@ class ExtGSEA:
 
                 self._bg["miss"] = np.cumsum(1 - self._bg["isgs"])
                 self._bg["miss"] = self._bg["miss"] / self._bg["miss"][-1]
-                
+
                 self._bg["all"] = self._bg["hit"] - self._bg["miss"]
                 self._bg["es"][i] = max(self._bg["all"]) + min(self._bg["all"])
 
@@ -347,3 +363,210 @@ class ExtGSEA:
 
         if out is not None:
             plt.savefig(out, dpi=600)
+
+    def svg_plot(
+        self,
+        svg: SVGFigure,
+        title=None,
+        out=None,
+        w: int = 500,
+        ylabel: Optional[str] = "ES",
+        show_leading_edge: bool = True,
+        stroke: int = 4,
+        line_color: list[str] = ["red", "blue"],
+        le_fill_opacity: float = 0.3,
+        hit_height: int = 20,
+        showsnr: bool = True,
+    ):
+        h = w * 0.75
+
+        # plot 1
+        es1 = self.enrichment_score(self._gs1)
+        is_leading_edge1 = es1["is_leading_edge"]
+        es2 = self.enrichment_score(self._gs2)
+        is_leading_edge2 = es2["is_leading_edge"]
+
+        y = es1["es_all"]  # self._ranked_scores
+        x = np.array(range(y.size))
+
+        # subsample so we don't draw every point
+        ix = list(range(0, len(x), 100))
+
+        print(ix)
+
+        x1 = x[ix]
+        y1 = y[ix]
+        xmax = max(x)
+        ymax = max([max(abs(es1["es_all"])), max(abs(es2["es_all"]))])
+        ymax = np.round((ymax * 10) / 10, 1)
+        ymin = -ymax
+
+        print(xmax, ymax, min(y), max(y), "cake")
+
+        xaxis = Axis(lim=[0, xmax], w=w)
+        yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
+        # leading edge 1
+
+        xlead = x[is_leading_edge1]
+        ylead = y[is_leading_edge1]
+
+        # if xlead[0] != 0:
+        xlead = np.insert(xlead, 0, xlead[0])
+        ylead = np.insert(ylead, 0, 0)
+
+        xlead = np.append(xlead, xlead[-1])
+        ylead = np.append(ylead, 0)
+
+        if show_leading_edge:
+            points = [
+                [xaxis.scale(px), h - yaxis.scale(py)] for px, py in zip(xlead, ylead)
+            ]
+            svg.add_polyline(
+                points,
+                color="none",
+                fill=line_color[0],
+                stroke=0,
+                fill_opacity=le_fill_opacity,
+            )
+
+        # fill in points
+        y1[0] = 0
+        y1[-1] = 0
+
+        # scale points
+        points = [[xaxis.scale(px), h - yaxis.scale(py)] for px, py in zip(x1, y1)]
+
+        # python light green as html
+        svg.add_polyline(points, color=line_color[0], stroke=stroke)
+
+        # plot 2
+
+        y = es2["es_all"]  # self._ranked_scores
+        x = np.array(range(y.size))
+
+        y1 = y[ix]
+
+        print(xmax, ymax, min(y), max(y), "cake")
+
+        xaxis = Axis(lim=[0, xmax], w=w)
+        yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
+        # leading edge 1
+
+        xlead = x[is_leading_edge2]
+        ylead = y[is_leading_edge2]
+
+        # if xlead[0] != 0:
+        xlead = np.insert(xlead, 0, xlead[0])
+        ylead = np.insert(ylead, 0, 0)
+
+        xlead = np.append(xlead, xlead[-1])
+        ylead = np.append(ylead, 0)
+
+        if show_leading_edge:
+            points = [
+                [xaxis.scale(px), h - yaxis.scale(py)] for px, py in zip(xlead, ylead)
+            ]
+            svg.add_polyline(
+                points,
+                color="none",
+                fill=line_color[1],
+                stroke=0,
+                fill_opacity=le_fill_opacity,
+            )
+
+        # fill in points
+        y1[0] = 0
+        y1[-1] = 0
+
+        # scale points
+        points = [[xaxis.scale(px), h - yaxis.scale(py)] for px, py in zip(x1, y1)]
+
+        # python light green as html
+        svg.add_polyline(points, color=line_color[1], stroke=stroke)
+
+        ticks = [ymin, 0, ymax]
+        ticks = [np.round(t, 1) for t in ticks]
+
+        # if ymin == 0:
+        #     ticks = [ymin, ymax]
+        # elif ymax == 0:
+        #     ticks = [ymin, ymax]
+        # else:
+        #     ticks = [ymin, 0, ymax]
+
+        svgplot.add_y_axis(
+            svg,
+            axis=yaxis,
+            ticks=ticks,
+             
+            padding=svgplot.TICK_SIZE,
+            showticks=True,
+            stroke=stroke,
+            title_offset=120
+        )
+
+        # draw line at y =0
+
+        y1 = h - yaxis.scale(0)  # (0 - ymin) / (ymax - ymin) * scaleh
+
+        svg.add_line(y1=y1, x2=w, stroke=stroke)
+
+        # draw hits
+        pos = (0, h + 20)
+
+        for hit in np.where(es1["hits"] > 0)[0]:
+            x1 = xaxis.scale(hit)  # hit / xmax * w
+            svg.add_line(x1=x1, y1=pos[1], y2=pos[1] + hit_height, color=line_color[0])
+
+        pos = (0, pos[1] + 1.5 * hit_height)
+        for hit in np.where(es2["hits"] > 0)[0]:
+            x1 = xaxis.scale(hit)  # hit / xmax * w
+            svg.add_line(x1=x1, y1=pos[1], y2=pos[1] + hit_height, color=line_color[1])
+
+        if showsnr:
+            pos = (0, pos[1] + 50)
+            snr = self._ranked_scores
+            zero_cross = snr[snr > 0].shape[0]
+            m = round(int(max(abs(snr)) * 10) / 10, 1)
+            ymin = -m
+            ymax = m
+            h = w * 0.3
+            yaxis = Axis(lim=[ymin, ymax], w=h, label="SNR")
+
+            svgplot.add_y_axis(
+                svg,
+                pos=pos,
+                axis=yaxis,
+                ticks=[-m, 0, m],
+                padding=svgplot.TICK_SIZE,
+                showticks=True,
+                stroke=stroke,
+                title_offset=120
+            )
+
+            # gray
+            points = [[xaxis.scale(0), pos[1] + h - yaxis.scale(0)]]
+            points.extend(
+                [
+                    [xaxis.scale(px), pos[1] + h - yaxis.scale(py)]
+                    for px, py in zip(range(0, xmax), snr)
+                ]
+            )
+            points.extend([[xaxis.scale(xmax), pos[1] + h - yaxis.scale(0)]])
+            svg.add_polyline(
+                points, color="none", fill="#4d4d4d", stroke=stroke, fill_opacity=0.3
+            )
+
+            x1 = xaxis.scale(zero_cross)
+            svg.add_line(
+                x1=x1,
+                y2=pos[1] + h - yaxis.scale(ymax),
+                x2=x1,
+                y1=pos[1] + h - yaxis.scale(ymin),
+                stroke=stroke,
+                dashed=True,
+            )
+
+            # draw line at y =0
+            y1 = pos[1] + h - yaxis.scale(0)
+            # svg.add_line(x1=xoffset, y1=y1, x2=xoffset+w, y2=y1, stroke=core.AXIS_STROKE)
