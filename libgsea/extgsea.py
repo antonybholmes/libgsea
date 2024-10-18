@@ -39,7 +39,7 @@ class ExtGSEA:
         # descending order
         ix = np.argsort(rsc)[::-1]
 
-        print(np.sort(rsc)[::-1])
+        #print(np.sort(rsc)[::-1])
 
         pn = np.concatenate((np.ones(l), -np.ones(l)), axis=0)
 
@@ -53,7 +53,7 @@ class ExtGSEA:
         # Defaults if nothing found
         self._es = -1
         self._nes = -1
-        self._pv = -1
+        self._pvalue = -1
         self._ledge = []
         self._bg = {}
 
@@ -62,7 +62,7 @@ class ExtGSEA:
 
         self._run = False
 
-    def enrichment_score(self, gs1):
+    def enrichment_score(self, gs1: list[str]):
         l = len(self._ranked_gene_list)
 
         hits = np.zeros(l)
@@ -90,7 +90,7 @@ class ExtGSEA:
             ledge = ledge[::-1]
         else:
             ixpk = np.where(es_all == np.max(es_all))[0][0]
-            print(ixpk)
+            #print(ixpk)
             is_leading_edge[0 : (ixpk + 1)] = 1
             ledge = self._ranked_gene_list[(is_leading_edge == 1) & (hits == 1)]
 
@@ -105,7 +105,13 @@ class ExtGSEA:
             "ledge": ledge,
         }
 
-    def ext_gsea(self, gs1, gs2, name1="Gene set 1", name2="Gene set 2"):
+    def ext_gsea(
+        self,
+        gs1: list[str],
+        gs2: list[str],
+        name1: str = "Gene set 1",
+        name2: str = "Gene set 2",
+    ):
         self._gs1 = gs1
         self._gs2 = gs2
         self._gsn1 = name1
@@ -175,22 +181,27 @@ class ExtGSEA:
                 self._bg["es"][i] = max(self._bg["all"]) + min(self._bg["all"])
 
             if self._es < 0:
-                self._pv = np.sum(self._bg["es"] <= self._es) / self._np
+                self._pvalue = np.sum(self._bg["es"] <= self._es) / self._np
                 self._nes = self._es / np.abs(
                     np.mean(self._bg["es"][self._bg["es"] < 0])
                 )
             else:
-                self._pv = np.sum(self._bg["es"] >= self._es) / self._np
+                self._pvalue = np.sum(self._bg["es"] >= self._es) / self._np
                 self._nes = self._es / np.abs(
                     np.mean(self._bg["es"][self._bg["es"] > 0])
                 )
         else:
-            self._pv = -1
+            self._pvalue = -1
             self._nes = -1
 
         self._run = True
 
-        return self._es, self._nes, self._pv, self._ledge
+        return {
+            "es": self._es,
+            "nes": self._nes,
+            "pvalue": self._pvalue,
+            "ledge": self._ledge,
+        }
 
     @property
     def bg(self):
@@ -216,7 +227,7 @@ class ExtGSEA:
     def score_miss(self):
         return self._score_miss
 
-    def plot(self, title=None, out=None):
+    def plot(self, title: Optional[str] = None, out: Optional[str] = None):
         """
         Replot existing GSEA plot to make it better for publications
         """
@@ -246,13 +257,9 @@ class ExtGSEA:
         # subsample so we don't draw every point
         ix = list(range(0, len(x), 100))
 
-        print(ix)
-
         x1 = x[ix]
         y1 = self._ranked_scores[ix]
-
-        print(hits1)
-
+ 
         ax1 = fig.add_subplot(gs[10:])
         ax1.fill_between(x1, y1=y1, y2=0, color="#2c5aa0")
         ax1.set_ylabel("Ranked list metric", fontsize=14)
@@ -367,18 +374,21 @@ class ExtGSEA:
     def svg_plot(
         self,
         svg: SVGFigure,
-        title=None,
-        out=None,
+        title: Optional[str] = None,
         w: int = 500,
         ylabel: Optional[str] = "ES",
         show_leading_edge: bool = True,
         stroke: int = 4,
-        line_color: list[str] = ["red", "blue"],
+        line_color: list[str] = ["red", "royalblue"],
         le_fill_opacity: float = 0.3,
-        hit_height: int = 20,
+        hit_height: int = 25,
         showsnr: bool = True,
+        aspect_ratio: float = 0.6,
     ):
-        h = w * 0.6
+        if not self._run:
+            return
+        
+        h = w * aspect_ratio
 
         # plot 1
         es1 = self.enrichment_score(self._gs1)
@@ -392,17 +402,13 @@ class ExtGSEA:
         # subsample so we don't draw every point
         ix = list(range(0, len(x), 100))
 
-        print(ix)
-
         x1 = x[ix]
         y1 = y[ix]
         xmax = max(x)
-        ymax = max([max(abs(es1["es_all"])), max(abs(es2["es_all"]))])
+        ymax = max(abs(np.concatenate([es1["es_all"], es2["es_all"]])))
         ymax = np.round((ymax * 10) / 10, 1)
         ymin = -ymax
-
-        print(xmax, ymax, min(y), max(y), "cake")
-
+ 
         xaxis = Axis(lim=[0, xmax], w=w)
         yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
         # leading edge 1
@@ -410,7 +416,6 @@ class ExtGSEA:
         xlead = x[is_leading_edge1]
         ylead = y[is_leading_edge1]
 
-        # if xlead[0] != 0:
         xlead = np.insert(xlead, 0, xlead[0])
         ylead = np.insert(ylead, 0, 0)
 
@@ -445,9 +450,7 @@ class ExtGSEA:
         x = np.array(range(y.size))
 
         y1 = y[ix]
-
-        print(xmax, ymax, min(y), max(y), "cake")
-
+ 
         xaxis = Axis(lim=[0, xmax], w=w)
         yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
         # leading edge 1
@@ -474,6 +477,10 @@ class ExtGSEA:
                 fill_opacity=le_fill_opacity,
             )
 
+        if es2["es"] >= 0:
+            svg.add_line(x1=xaxis.scale(xlead[-1 if es2["es"] >= 0 else 9]), y2=yaxis.scale(max(ylead)), dashed=True, color=line_color[1])
+        else:
+            svg.add_line(x1=xaxis.scale(xlead[0]), y2=yaxis.scale(max(ylead)), dashed=True, color=line_color[1])
         # fill in points
         y1[0] = 0
         y1[-1] = 0
@@ -498,18 +505,17 @@ class ExtGSEA:
             svg,
             axis=yaxis,
             ticks=ticks,
-             
             padding=svgplot.TICK_SIZE,
             showticks=True,
             stroke=stroke,
-            title_offset=120
+            title_offset=120,
         )
 
         # draw line at y =0
-
         y1 = h - yaxis.scale(0)  # (0 - ymin) / (ymax - ymin) * scaleh
-
         svg.add_line(y1=y1, x2=w, stroke=stroke)
+        # add label for max gene count
+        svg.add_text_bb(f"{x.size:,}", x=w + 10, y=y1 + 20)
 
         # draw hits
         pos = (0, h + 20)
@@ -517,13 +523,17 @@ class ExtGSEA:
         for hit in np.where(es1["hits"] > 0)[0]:
             x1 = xaxis.scale(hit)  # hit / xmax * w
             svg.add_line(x1=x1, y1=pos[1], y2=pos[1] + hit_height, color=line_color[0])
-        svg.add_text_bb(self._gsn1, color=line_color[0], x=w+20, y=pos[1]+hit_height/2+2)
+        svg.add_text_bb(
+            self._gsn1, color=line_color[0], x=w + 20, y=pos[1] + hit_height / 2 + 2
+        )
 
-        pos = (0, pos[1] + 2 * hit_height)
+        pos = (0, pos[1] + hit_height * 1.5)
         for hit in np.where(es2["hits"] > 0)[0]:
             x1 = xaxis.scale(hit)  # hit / xmax * w
             svg.add_line(x1=x1, y1=pos[1], y2=pos[1] + hit_height, color=line_color[1])
-        svg.add_text_bb(self._gsn2, color=line_color[1], x=w+20, y=pos[1]+hit_height/2+2)
+        svg.add_text_bb(
+            self._gsn2, color=line_color[1], x=w + 20, y=pos[1] + hit_height / 2 + 2
+        )
 
         if showsnr:
             pos = (0, pos[1] + 50)
@@ -532,7 +542,7 @@ class ExtGSEA:
             m = round(int(max(abs(snr)) * 10) / 10, 1)
             ymin = -m
             ymax = m
-            h = w * 0.3
+            h = w * aspect_ratio * 0.5
             yaxis = Axis(lim=[ymin, ymax], w=h, label="SNR")
 
             svgplot.add_y_axis(
@@ -543,7 +553,7 @@ class ExtGSEA:
                 padding=svgplot.TICK_SIZE,
                 showticks=True,
                 stroke=stroke,
-                title_offset=120
+                title_offset=120,
             )
 
             # gray
@@ -569,6 +579,10 @@ class ExtGSEA:
                 dashed=True,
             )
 
-            # draw line at y =0
+            svg.add_text_bb(
+                f"Zero cross at {zero_cross:,}", x=x1, y=pos[1] + h + 30, align="c"
+            )
+
+            # draw line at y = 0
             y1 = pos[1] + h - yaxis.scale(0)
             # svg.add_line(x1=xoffset, y1=y1, x2=xoffset+w, y2=y1, stroke=core.AXIS_STROKE)
