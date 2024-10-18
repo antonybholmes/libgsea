@@ -378,7 +378,7 @@ class ExtGSEA:
         hit_height: int = 20,
         showsnr: bool = True,
     ):
-        h = w * 0.75
+        h = w * 0.6
 
         # plot 1
         es1 = self.enrichment_score(self._gs1)
@@ -517,11 +517,13 @@ class ExtGSEA:
         for hit in np.where(es1["hits"] > 0)[0]:
             x1 = xaxis.scale(hit)  # hit / xmax * w
             svg.add_line(x1=x1, y1=pos[1], y2=pos[1] + hit_height, color=line_color[0])
+        svg.add_text_bb(self._gsn1, color=line_color[0], x=w+20, y=pos[1]+hit_height/2+2)
 
-        pos = (0, pos[1] + 1.5 * hit_height)
+        pos = (0, pos[1] + 2 * hit_height)
         for hit in np.where(es2["hits"] > 0)[0]:
             x1 = xaxis.scale(hit)  # hit / xmax * w
             svg.add_line(x1=x1, y1=pos[1], y2=pos[1] + hit_height, color=line_color[1])
+        svg.add_text_bb(self._gsn2, color=line_color[1], x=w+20, y=pos[1]+hit_height/2+2)
 
         if showsnr:
             pos = (0, pos[1] + 50)
