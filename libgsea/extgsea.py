@@ -167,7 +167,6 @@ class ExtGSEA:
 
         self._es_all = self._score_hit - self._score_miss
 
-        
         self._es = np.max(self._es_all) + np.min(self._es_all)
 
         print("es all test", np.max(self._es_all))
@@ -291,14 +290,14 @@ class ExtGSEA:
         x1 = x[ix]
         y1 = y[ix]
         xmax = max(x)
-        ymax = max(abs(np.concatenate([es1["es_all"], es2["es_all"]])))
+        ymax = max(abs(np.concatenate([y, es2["es_all"]]))) #es1["es_all"]
         ymax = np.round((ymax * 10) / 10, 1)
         ymin = -ymax
 
         xaxis = Axis(lim=[0, xmax], w=w)
         yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
         # leading edge 1
-
+		
         xlead = x[is_leading_edge1]
         ylead = y[is_leading_edge1]
 
@@ -333,12 +332,12 @@ class ExtGSEA:
         # plot 2
 
         y = es2["es_all"]  # self._ranked_scores
-        x = np.array(range(y.size))
+        #x = np.array(range(y.size))
 
         y1 = y[ix]
 
-        xaxis = Axis(lim=[0, xmax], w=w)
-        yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
+        #xaxis = Axis(lim=[0, xmax], w=w)
+        #yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
         # leading edge 1
 
         xlead = x[is_leading_edge2]
@@ -431,7 +430,9 @@ class ExtGSEA:
         if showsnr:
             pos = (0, pos[1] + 50)
             snr = self._ranked_scores
-            zero_cross = snr[snr > 0].shape[0]
+            print("snr", snr)
+            zero_cross = np.where(snr > 0)[0][-1] + 1 #snr[snr > 0].shape[0]
+            print("z", zero_cross)
             m = round(int(max(abs(snr)) * 10) / 10, 1)
             ymin = -m
             ymax = m
