@@ -29,7 +29,13 @@ LINE_GREEN = "#00b359"
 
 
 class ExtGSEA:
-    def __init__(self, ranked_gene_list, ranked_scores, permutations=1000, w=1):
+    def __init__(
+        self,
+        ranked_gene_list: list[str],
+        ranked_scores: list[float],
+        permutations: int = 1000,
+        w: float = 1,
+    ):
         self._w = w
         self._np = permutations
 
@@ -43,7 +49,6 @@ class ExtGSEA:
 
         # print(np.sort(rsc)[::-1])
 
- 
         pn = np.concatenate((np.ones(l), -np.ones(l)), axis=0)
 
         self._ranked_gene_list = ranked_gene_list
@@ -156,7 +161,7 @@ class ExtGSEA:
 
         # Compute ES
         self._score_hit = np.cumsum(np.abs(self._rsc * self._isgs) ** self._w)
-        df_out = pd.DataFrame(self._score_hit, columns=["py"],index=self._rkc)
+        df_out = pd.DataFrame(self._score_hit, columns=["py"], index=self._rkc)
         df_out.to_csv("hits.txt", sep="\t", header=True, index=True)
 
         self._score_hit = self._score_hit / self._score_hit[-1]
@@ -173,7 +178,6 @@ class ExtGSEA:
 
         df_out = pd.DataFrame(self._es_all, columns=["py"])
         df_out.to_csv("x.txt", sep="\t", header=True, index=False)
-
 
         # identify leading edge
         isen = np.zeros(l)
@@ -290,14 +294,14 @@ class ExtGSEA:
         x1 = x[ix]
         y1 = y[ix]
         xmax = max(x)
-        ymax = max(abs(np.concatenate([y, es2["es_all"]]))) #es1["es_all"]
+        ymax = max(abs(np.concatenate([y, es2["es_all"]])))  # es1["es_all"]
         ymax = np.round((ymax * 10) / 10, 1)
         ymin = -ymax
 
         xaxis = Axis(lim=[0, xmax], w=w)
         yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
         # leading edge 1
-		
+
         xlead = x[is_leading_edge1]
         ylead = y[is_leading_edge1]
 
@@ -332,12 +336,12 @@ class ExtGSEA:
         # plot 2
 
         y = es2["es_all"]  # self._ranked_scores
-        #x = np.array(range(y.size))
+        # x = np.array(range(y.size))
 
         y1 = y[ix]
 
-        #xaxis = Axis(lim=[0, xmax], w=w)
-        #yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
+        # xaxis = Axis(lim=[0, xmax], w=w)
+        # yaxis = Axis(lim=[ymin, ymax], w=h, label=ylabel if ylabel is not None else "")
         # leading edge 1
 
         xlead = x[is_leading_edge2]
@@ -431,7 +435,7 @@ class ExtGSEA:
             pos = (0, pos[1] + 50)
             snr = self._ranked_scores
             print("snr", snr)
-            zero_cross = np.where(snr > 0)[0][-1] + 1 #snr[snr > 0].shape[0]
+            zero_cross = np.where(snr > 0)[0][-1] + 1  # snr[snr > 0].shape[0]
             print("z", zero_cross)
             m = round(int(max(abs(snr)) * 10) / 10, 1)
             ymin = -m
