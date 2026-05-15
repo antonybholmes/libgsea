@@ -380,7 +380,7 @@ class ExtGSEA:
         )
 
         svg.add_text_bb(
-            f"p={combined_p:.2e}",
+            f"p={combined_p:.4f}",
             x=350,
             y=45,
         )
