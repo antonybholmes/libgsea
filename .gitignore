@@ -1,4 +1,15 @@
 dist/
 build/
 *.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
+*.log
+*.pdf
+*.txt
+*.csv   
 
