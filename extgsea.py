@@ -20,12 +20,44 @@ import matplotlib.gridspec as gridspec
 import svgplot
 from svgplot.axis import Axis
 from svgplot.svgfigure import SVGFigure
+from scipy.stats import norm
 
 # https://www.mathworks.com/matlabcentral/fileexchange/33599-gsea2
 # Not sure about this http://arep.med.harvard.edu/N-Regulation/Tolonen2006/GSEA/index.html
 # https://pmc.ncbi.nlm.nih.gov/articles/PMC2740937/
 
 LINE_GREEN = "#00b359"
+
+
+def combine_gsea_results(nes1, p1, nes2, p2, opposite=True):
+    """
+    Combine GSEA results from two gene sets using Stouffer's method.
+
+    opposite=True: gs2 is expected to move in the opposite direction of gs1
+                  (e.g., gs1 is UP, gs2 is DOWN).
+    opposite=False: Both sets are expected to move in the same direction.
+
+    """
+
+    nes2_adj = -nes2 if opposite else nes2
+
+    # 1. Combine NES using Stouffer's
+    # Dividing by sqrt(2) ensures the meta-NES remains on a standard scale
+    combined_nes = (nes1 + nes2_adj) / np.sqrt(2)
+
+    # 2. Combine p-values using Stouffer's Z-transform
+    # We use 1-p to get the upper-tail Z-score
+    # Avoid p=0 or p=1 to prevent infinity issues with norm.ppf
+    p1 = np.clip(p1, 1e-16, 1 - 1e-16)
+    p2 = np.clip(p2, 1e-16, 1 - 1e-16)
+
+    z1 = norm.ppf(1 - p1) * np.sign(nes1)
+    z2 = norm.ppf(1 - p2) * np.sign(nes2_adj)
+
+    z_meta = (z1 + z2) / np.sqrt(2)
+    combined_p = 1 - norm.cdf(z_meta)
+
+    return combined_nes, combined_p
 
 
 class ExtGSEA:
@@ -35,28 +67,33 @@ class ExtGSEA:
         ranked_scores: list[float],
         permutations: int = 1000,
         w: float = 1,
+        opposite: bool = True,
     ):
         self._w = w
         self._np = permutations
+        self._opposite = opposite
 
         l = len(ranked_gene_list)
 
         # the negative versions are for the second gene set
-        rk = np.concatenate((ranked_gene_list, ranked_gene_list), axis=0)
-        rsc = np.concatenate((ranked_scores, -ranked_scores), axis=0)
+        ranked_gene_list_combined = np.concatenate(
+            (ranked_gene_list, ranked_gene_list), axis=0
+        )
+        ranked_scores_combined = np.concatenate((ranked_scores, -ranked_scores), axis=0)
         # descending order
-        ix = np.argsort(rsc)[::-1]
+        ix = np.argsort(ranked_scores_combined)[::-1]
 
         # print(np.sort(rsc)[::-1])
 
         pn = np.concatenate((np.ones(l), -np.ones(l)), axis=0)
 
         self._ranked_gene_list = ranked_gene_list
+        self._n_ranked_genes = len(ranked_gene_list)
         self._ranked_scores = ranked_scores
 
-        self._rkc = rk[ix]
-        self._rsc = rsc[ix]
-        self._pn = pn[ix]
+        self._ranked_gene_list_combined = ranked_gene_list_combined[ix]
+        self._ranked_scores_combined = ranked_scores_combined[ix]
+        self._polarity = pn[ix]
 
         # Defaults if nothing found
         self._es = -1
@@ -64,6 +101,7 @@ class ExtGSEA:
         self._pvalue = -1
         self._leading_edge = []
         self._bg = {}
+        self._isgs = []
 
         self._geneset1_name = "n1"
         self._geneset2_name = "n2"
@@ -73,11 +111,9 @@ class ExtGSEA:
     def enrichment_score(self, geneset: list[str]):
         geneset = set(geneset)
 
-        l = len(self._ranked_gene_list)
+        hits = np.zeros(self._n_ranked_genes)  # aka isgs in gsea2.m
 
-        hits = np.zeros(l)  # aka isgs in gsea2.m
-
-        for i in range(0, l):
+        for i in range(0, self._n_ranked_genes):
             if self._ranked_gene_list[i] in geneset:
                 hits[i] = 1
 
@@ -94,10 +130,9 @@ class ExtGSEA:
 
         es_all = score_hit - score_miss
 
-        # if
         es = np.max(es_all) + np.min(es_all)
 
-        is_leading_edge = np.zeros(l)
+        is_leading_edge = np.zeros(self._n_ranked_genes)
 
         if es < 0:
             # where does the leading edge start
@@ -114,8 +149,38 @@ class ExtGSEA:
         # just the indices of the leading edge
         is_leading_edge = np.where(is_leading_edge == 1)[0]  # .sort()
 
+        pvalue = -1
+        nes = -1
+
+        if self._np > 0:
+            bg_es = np.zeros(self._np)
+
+            # randomize to get p-value
+
+            for i in range(0, self._np):
+                bg_isgs = hits[np.random.permutation(self._n_ranked_genes)]
+
+                bg_hit = np.cumsum((np.abs(self._ranked_scores * bg_isgs)) ** self._w)
+
+                bg_hit = bg_hit / bg_hit[-1]
+
+                bg_miss = np.cumsum(1 - bg_isgs)
+                bg_miss = bg_miss / bg_miss[-1]
+
+                bg_all = bg_hit - bg_miss
+                bg_es[i] = max(bg_all) + min(bg_all)
+
+            if es < 0:
+                pvalue = np.sum(bg_es <= es) / self._np
+                nes = es / np.abs(np.mean(bg_es[bg_es < 0]))
+            else:
+                pvalue = np.sum(bg_es >= es) / self._np
+                nes = es / np.abs(np.mean(bg_es[bg_es > 0]))
+
         return {
             "es": es,
+            "nes": nes,
+            "pvalue": pvalue,
             "es_all": es_all,
             "hits": hits,
             "is_leading_edge": is_leading_edge,
@@ -137,31 +202,33 @@ class ExtGSEA:
         gs1 = set(gs1)
         gs2 = set(gs2)
 
-        l = len(self._ranked_gene_list)
+        self._hits1 = np.zeros(self._n_ranked_genes)
+        self._hits2 = np.zeros(self._n_ranked_genes)
 
-        self._hits1 = np.zeros(l)
-        self._hits2 = np.zeros(l)
-
-        for i in range(0, l):
+        for i in range(0, self._n_ranked_genes):
             if self._ranked_gene_list[i] in gs1:
                 self._hits1[i] = 1
 
             if self._ranked_gene_list[i] in gs2:
                 self._hits2[i] = 1
 
-        l = len(self._rkc)
+        l = len(self._ranked_gene_list_combined)
 
         self._isgs = np.zeros(l)
 
         for i in range(l):
-            if (self._pn[i] > 0 and self._rkc[i] in gs1) or (
-                self._pn[i] < 0 and self._rkc[i] in gs2
-            ):
+            if (
+                self._polarity[i] > 0 and self._ranked_gene_list_combined[i] in gs1
+            ) or (self._polarity[i] < 0 and self._ranked_gene_list_combined[i] in gs2):
                 self._isgs[i] = 1
 
         # Compute ES
-        self._score_hit = np.cumsum(np.abs(self._rsc * self._isgs) ** self._w)
-        df_out = pd.DataFrame(self._score_hit, columns=["py"], index=self._rkc)
+        self._score_hit = np.cumsum(
+            np.abs(self._ranked_scores_combined * self._isgs) ** self._w
+        )
+        df_out = pd.DataFrame(
+            self._score_hit, columns=["py"], index=self._ranked_gene_list_combined
+        )
         df_out.to_csv("hits.txt", sep="\t", header=True, index=True)
 
         self._score_hit = self._score_hit / self._score_hit[-1]
@@ -174,35 +241,48 @@ class ExtGSEA:
 
         self._es = np.max(self._es_all) + np.min(self._es_all)
 
-        print("es all test", np.max(self._es_all))
+        print(
+            "es all test",
+            np.max(self._es_all),
+            np.max(self._es_all),
+            np.min(self._es_all),
+        )
 
-        df_out = pd.DataFrame(self._es_all, columns=["py"])
-        df_out.to_csv("x.txt", sep="\t", header=True, index=False)
+        # df_out = pd.DataFrame(self._es_all, columns=["py"])
+        # df_out.to_csv("x.txt", sep="\t", header=True, index=False)
 
         # identify leading edge
         isen = np.zeros(l)
+
+        print("es", self._es)
 
         if self._es < 0:
             ixpk = np.where(self._es_all == np.min(self._es_all))[0][0]
             isen[ixpk:] = 1
             # Leading edge is a gene list
-            self._leading_edge = self._rkc[(isen == 1) & (self._isgs == 1)]
+            self._leading_edge = self._ranked_gene_list_combined[
+                (isen == 1) & (self._isgs == 1)
+            ]
             self._leading_edge = self._leading_edge[::-1]
         else:
             print(self._score_hit)
             ixpk = np.where(self._es_all == np.max(self._es_all))[0][0]
             isen[0 : (ixpk + 1)] = 1
-            self._leading_edge = self._rkc[(isen == 1) & (self._isgs == 1)]
+            self._leading_edge = self._ranked_gene_list_combined[
+                (isen == 1) & (self._isgs == 1)
+            ]
 
         if self._np > 0:
             self._bg["es"] = np.zeros(self._np)
 
             # randomize to get p-value
-            n = self._isgs.size
+            n = len(self._isgs)
             for i in range(0, self._np):
                 bg_isgs = self._isgs[np.random.permutation(n)]
 
-                bg_hit = np.cumsum((np.abs(self._rsc * bg_isgs)) ** self._w)
+                bg_hit = np.cumsum(
+                    (np.abs(self._ranked_scores_combined * bg_isgs)) ** self._w
+                )
 
                 bg_hit = bg_hit / bg_hit[-1]
 
@@ -284,6 +364,26 @@ class ExtGSEA:
 
         es2 = self.enrichment_score(self._geneset2)
         is_leading_edge2 = es2["is_leading_edge"]
+
+        combined_nes, combined_p = combine_gsea_results(
+            es1["nes"],
+            es1["pvalue"],
+            es2["nes"],
+            es2["pvalue"],
+            opposite=self._opposite,
+        )
+
+        svg.add_text_bb(
+            f"NES={combined_nes:.2f}",
+            x=350,
+            y=10,
+        )
+
+        svg.add_text_bb(
+            f"p={combined_p:.2e}",
+            x=350,
+            y=45,
+        )
 
         y = es1["es_all"]  # self._ranked_scores
         x = np.array(range(y.size))
